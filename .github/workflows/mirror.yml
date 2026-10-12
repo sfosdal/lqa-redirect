@@ -1,0 +1,41 @@
+name: mirror the feeds from lqa.seattle.here.events
+# lqa.here.events was Lower Queen Anne Events' host from 2026-10-05 to
+# 2026-10-11; it now redirects to lqa.seattle.here.events (index.html, 404.html)
+# and keeps serving a daily copy of the calendar feeds and the scripts the
+# river site loads, so subscriptions and embeds made against the old host go
+# on working. Runs after lqa-events' own noon build (3 19 * * *, Steve's
+# once-a-day rule, 2026-10-11).
+on:
+  schedule:
+    - cron: '33 19 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: copy the feeds (a missing one is skipped, never fatal)
+        run: |
+          mkdir -p out && cp index.html 404.html out/
+          while read -r f; do
+            [ -n "$f" ] || continue
+            curl -fsSL --retry 3 -o "out/$f" "https://lqa.seattle.here.events/$f" && echo "mirrored $f" || echo "skipped $f"
+          done < feeds.txt
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: out
+      - id: deployment
+        uses: actions/deploy-pages@v4
